@@ -1,0 +1,287 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "virtualMachineName": {
+      "type": "String",
+      "metadata": {
+        "description": "Name for the Virtual Machine to be provisioned. VM name is case-insensitive. Alphanumeric and hyphen are valid characters."
+      },
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "virtualMachineSize": {
+      "type": "String"
+    },
+    "Image_SKU": {
+      "type": "string",
+      "allowedValues": [
+        "16.04-LTS",
+        "17.10",
+        "18.04-LTS"
+      ],
+      "metadata": {
+        "description": "Select which version of Ubuntu VM need to be deployed"
+      }
+    },
+    "loadBalancername": {
+      "type": "String"
+    },
+    "loadbalancerip": {
+      "type": "string",
+      "metadata": {
+        "description": "Private of the Internal LoadBalancer"
+      }
+    },
+    "subnetid": {
+      "type": "String",
+      "metadata": {
+        "description": "Subnet Id of the any subnet which is in loadBalancer's Virtual Network"
+      }
+    },
+    "adminUsername": {
+      "type": "String",
+      "metadata": {
+        "description": "Username of the administrator account in the Virtual Machine. Username will be used to remote connect (login) to the VM when it is created. Username must only contain letters, numbers, underscores, hyphens and may not start with a hyphen or number."
+      },
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "adminPassword": {
+      "type": "SecureString",
+      "metadata": {
+        "description": "Password of the administrator account in the Virtual Machine. Password must have 3 of the following: 1 lowercase character, 1 uppercase character, 1 number and  1 special character that is not hyphen(-). "
+      },
+      "minLength": 12,
+      "maxLength": 72
+    }
+  },
+  "variables": {
+    "nsgId": "[resourceId(resourceGroup().name, 'Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]",
+    "virtualMachineRG": "[resourcegroup().name]",
+    "loadBalancerRG": "[resourcegroup().name]",
+    "loadBalancerid": "[resourceId(resourceGroup().name, 'Microsoft.Network/loadBalancers', parameters('loadBalancername'))]",
+    "LoadBalancerFrontEnd": "[concat(variables('loadBalancerid'), '/' ,parameters('loadBalancername'), '/frontendIPConfigurations/LoadBalancerFrontEnd')]",
+    "networkInterfaceName": "[concat(parameters('virtualMachineName'), take(uniquestring(parameters('virtualMachineName'), deployment().name), 3))]",
+    "backendattachname": "[concat(parameters('loadBalancername'), '-backend')]",
+    "backendPoolId": "[concat(variables('loadBalancerid'), '/' ,'backendAddressPools/', variables('backendPoolName'))]",
+    "backendPoolName": "[concat(parameters('virtualMachineName'), '-backend')]",
+    "publicIpAddressName": "[concat(parameters('virtualMachineName'), '-publicip')]",
+    "networkSecurityGroupName": "[concat(parameters('virtualMachineName'), '-nsg')]",
+    "diskNameSalt": "[concat('disknamesalt', take(uniquestring(parameters('virtualMachineName'), deployment().name), 6))]",
+    "storageAccountName": "[concat('tsdisks', take(uniquestring(parameters('virtualMachineName'), deployment().name), 6))]",
+    "storageContainerUri": "[concat(concat('https://', variables('storageAccountName'), '.blob.core.windows.net/'), 'vhds/')]",
+    "location": "[resourcegroup().location]"
+  },
+  "resources": [{
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[variables('networkInterfaceName')]",
+      "apiVersion": "2018-10-01",
+      "location": "[variables('location')]",
+      "tags": {},
+      "properties": {
+        "ipConfigurations": [{
+          "name": "ipconfig1",
+          "properties": {
+            "subnet": {
+              "id": "[parameters('subnetid')]"
+            },
+            "privateIPAllocationMethod": "Dynamic",
+            "publicIpAddress": {
+              "id": "[resourceId(resourceGroup().name, 'Microsoft.Network/publicIpAddresses', variables('publicIpAddressName'))]"
+            },
+            "loadBalancerBackendAddressPools": [{
+              "id": "[variables('backendPoolId')]"
+            }]
+          }
+        }],
+        "networkSecurityGroup": {
+          "id": "[variables('nsgId')]"
+        }
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkSecurityGroups/', variables('networkSecurityGroupName'))]",
+        "[concat('Microsoft.Network/publicIpAddresses/', variables('publicIpAddressName'))]",
+        "[concat('Microsoft.Resources/deployments/', variables('backendattachname'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "name": "[variables('networkSecurityGroupName')]",
+      "apiVersion": "2018-08-01",
+      "location": "[variables('location')]",
+      "properties": {
+        "securityRules": [{
+          "name": "SSH",
+          "properties": {
+            "priority": "300",
+            "protocol": "TCP",
+            "access": "Allow",
+            "direction": "Inbound",
+            "sourceApplicationSecurityGroups": [],
+            "destinationApplicationSecurityGroups": [],
+            "sourceAddressPrefix": "*",
+            "sourcePortRange": "*",
+            "destinationAddressPrefix": "*",
+            "destinationPortRange": "22"
+          }
+        }]
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIpAddresses",
+      "sku": {
+        "name": "Standard"
+      },
+      "name": "[variables('publicIpAddressName')]",
+      "apiVersion": "2018-08-01",
+      "location": "[variables('location')]",
+      "tags": {},
+      "properties": {
+        "publicIpAllocationMethod": "Static"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "Storage",
+      "name": "[variables('storageAccountName')]",
+      "apiVersion": "2018-07-01",
+      "location": "[variables('location')]",
+      "tags": {},
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[parameters('virtualMachineName')]",
+      "apiVersion": "2018-06-01",
+      "location": "[variables('location')]",
+      "tags": {},
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('virtualMachineSize')]"
+        },
+        "storageProfile": {
+          "osDisk": {
+            "createOption": "fromImage",
+            "vhd": {
+              "uri": "[concat(variables('storageContainerUri'), parameters('virtualMachineName'), variables('diskNameSalt'), '.vhd')]"
+            },
+            "name": "[parameters('virtualMachineName')]"
+          },
+          "imageReference": {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "[parameters('Image_SKU')]",
+            "version": "latest"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [{
+            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
+          }]
+        },
+        "osProfile": {
+          "computerName": "[parameters('virtualMachineName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        }
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]",
+        "[concat('Microsoft.Network/networkInterfaces/', variables('networkInterfaceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "name": "[variables('backendattachname')]",
+      "apiVersion": "2017-05-10",
+      "resourceGroup": "[variables('loadBalancerRG')]",
+      "properties": {
+        "mode": "Incremental",
+        "parameters": {},
+        "template": {
+          "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {},
+          "variables": {},
+          "resources": [{
+            "name": "[parameters('loadBalancername')]",
+            "id": "[variables('loadBalancerId')]",
+            "type": "Microsoft.Network/loadBalancers",
+            "location": "eastus",
+            "tags": {},
+            "properties": {
+              "provisioningState": "Succeeded",
+              "frontendIPConfigurations": [{
+                "name": "LoadBalancerFrontEnd",
+                "id": "[variables('LoadBalancerFrontEnd')]",
+                "type": "Microsoft.Network/loadBalancers/frontendIPConfigurations",
+                "properties": {
+                  "provisioningState": "Succeeded",
+                  "privateIPAddress": "[parameters('loadbalancerip')]",
+                  "privateIPAllocationMethod": "Static",
+                  "subnet": {
+                    "id": "[parameters('subnetid')]"
+                  }
+                }
+              }],
+              "backendAddressPools": [{
+                "id": "[variables('backendPoolId')]",
+                "name": "[variables('backendPoolName')]",
+                "properties": {}
+              }],
+              "loadBalancingRules": [],
+              "probes": [],
+              "inboundNatRules": [],
+              "outboundRules": [],
+              "inboundNatPools": []
+            },
+            "sku": {
+              "name": "Standard",
+              "tier": "Regional"
+            },
+            "apiVersion": "2018-08-01"
+          }],
+          "outputs": {}
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "virtualMachineName": {
+      "type": "String",
+      "value": "[parameters('virtualMachineName')]"
+    },
+    "virtualMachineSize": {
+      "type": "String",
+      "value": "[parameters('virtualMachineSize')]"
+    },
+    "Image_SKU": {
+      "type": "String",
+      "value": "[parameters('Image_SKU')]"
+    },
+    "loadBalancername": {
+      "type": "String",
+      "value": "[parameters('loadBalancername')]"
+    },
+    "loadbalancerip": {
+      "type": "String",
+      "value": "[parameters('loadbalancerip')]"
+    },
+    "subnetid": {
+      "type": "String",
+      "value": "[parameters('subnetid')]"
+    },
+    "adminUsername": {
+      "type": "String",
+      "value": "[parameters('adminUsername')]"
+    },
+    "location": {
+      "type": "String",
+      "value": "[variables('location')]"
+    }
+  }
+}
