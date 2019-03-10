@@ -1,0 +1,59 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "virtualMachineName": {
+      "type": "String",
+      "metadata": {
+        "description": "Name for the Virtual Machine to be provisioned. VM name is case-insensitive. Alphanumeric and hyphen are valid characters."
+      },
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "virtualMachineSize": {
+      "type": "String"
+    },
+    "Image_SKU": {
+      "type": "string",
+      "allowedValues": [
+        "16.04-LTS",
+        "17.10",
+        "18.04-LTS"
+      ],
+      "metadata": {
+        "description": "Select which version of Ubuntu VM need to be deployed"
+      }
+    },
+    "loadBalancername": {
+      "type": "String"
+    },
+    "loadbalancerip": {
+      "type": "string",
+      "metadata": {
+        "description": "Private of the Internal LoadBalancer"
+      }
+    },
+    "subnetid": {
+      "type": "String",
+      "metadata": {
+        "description": "Subnet Id of the any subnet which is in loadBalancer's Virtual Network"
+      }
+    },
+    "adminUsername": {
+      "type": "String",
+      "metadata": {
+        "description": "Username of the administrator account in the Virtual Machine. Username will be used to remote connect (login) to the VM when it is created. Username must only contain letters, numbers, underscores, hyphens and may not start with a hyphen or number."
+      },
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "adminPassword": {
+      "type": "SecureString",
+      "metadata": {
+        "description": "Password of the administrator account in the Virtual Machine. Password must have 3 of the following: 1 lowercase character, 1 uppercase character, 1 number and  1 special character that is not hyphen(-). "
+      },
+      "minLength": 12,
+      "maxLength": 72
+    }
+  }
+}
